@@ -4,45 +4,66 @@
 #include <stdexcept>
 #include <thread>
 
-bool check_empty(std::ifstream& pFile)
+enum message{
+    song_add_success = 0,
+    song_add_fail = 1,
+    song_remove_success = 2,
+    song_remove_fail = 3,
+    playlist_add_success = 4,
+    playlist_add_fail = 5,
+    playlist_remove_success = 6,
+    playlist_remove_fail = 7,
+    song_playlist_add_success = 8,
+    song_playlist_add_fail = 9,
+    song_playlist_remove_success = 10,
+    song_playlist_remove_fail = 11,
+};
+
+static const char *message_strings[] = {
+    "Song added successfully",
+    "Failed to add song",
+    "Song removed successfully",
+    "Failed to remove song",
+    "Playlist added successfully",
+    "Failed to add playlist",
+    "Playlist removed successfully",
+    "Failed to remove playlist",
+    "Song added to playlist successfully",
+    "Failed to add song to playlist",
+    "Song removed from playlist successfully",
+    "Failed to remove song from playlist"
+};
+
+
+Player::Player(std::string Path, std::string Name, unsigned int Battery_capacity) :
+    memory{Memory()},
+    json_handler{JsonHandler(Path)},
+    battery{Battery(Battery_capacity)},
+    name{Name}
 {
-    return pFile.peek() == std::ifstream::traits_type::eof();
+    if(name.empty())
+        throw(std::invalid_argument("Name cannot be empty"));
 }
 
-Player::Player(std::string Path) : playlist{Playlist("null", "null")}, path{Path} {
-    std::ifstream file(path);
-    if(check_empty(file)){
-        std::cout << "Playlist does not exist" << '\n';
-        return;
-    }
-    nlohmann::json playlistJson;
-    file >> playlistJson;
-    playlist.from_json(playlistJson);
+Player::Player(std::string Path) : 
+    memory{Memory()},
+    json_handler{JsonHandler(Path)},
+    battery{Battery()}
+{
+    nlohmann::json json_data = json_handler.read_json();
+    memory.from_json(json_data["memory"]);
+    battery.from_json(json_data["battery"]);
 }
 
-Player::Player(std::string Path, std::string Author, std::string Name): playlist{Playlist(Name, Author)}, path{Path} {
-    std::ofstream file(path);
-    file << playlist.to_json().dump(4);
-}
-
-void Player::add_song(std::string Artist, std::string Title, unsigned int Length){
-    try{
-        playlist.add_song(Artist, Title, Length);
-        std::ofstream file(path);
-        file << playlist.to_json().dump(4);
-    }
-    catch (std::invalid_argument& e){
-        std::cout << e.what() << std::endl;
-    }
-}
-
-void Player::remove_song(std::string Artist, std::string Title){
-    if(playlist.remove_song(Artist, Title)){
-        std::ofstream file(path);
-        file << playlist.to_json().dump(4);
-    }
+std::string Player::add_song(Song song){
+    if(memory.add_song(song))
+        return(message_strings[song_add_success]);
     else
-        std::cout << "Song not found" << std::endl;
+        return(message_strings[song_add_fail]);
+}
+
+std::string Player::remove_song(std::string Artist, std::string Title){
+    memory.remove_song(Artist, Title);
 }
 
 void Player::list_playlist() const{
@@ -53,15 +74,8 @@ void Player::list_playlist() const{
         std::cout << song.get_artist() << " - " << song.get_title() << " - " << song.get_length() << " seconds" << std::endl;
 }
 
-void Player::play_songs() const{
-    std::vector<Song> songs;
-    for(const auto& song : playlist.get_song_list())
-        songs.push_back(song);
-    if(songs.size() == 0){
-        std::cout << "No songs in the playlist" << std::endl;
-        return;
-    }
-    for(const auto& song : songs){
+void Player::play_playlist() const{
+    for(const auto& song : playlist.get_song_list()){
         std::cout << "Now playing: " << song.get_artist() << " - " << song.get_title() << std::endl;
         for(unsigned int timer = song.get_length(); timer > 0; timer--){
             std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -69,10 +83,6 @@ void Player::play_songs() const{
         }
         std::cout << "Finished playing: " << song.get_artist() << " - " << song.get_title() << std::endl;
     }
-}
-
-void Player::list_modification_history() const{
-    std::cout << playlist.get_modification_string() << std::endl;
 }
 
 
